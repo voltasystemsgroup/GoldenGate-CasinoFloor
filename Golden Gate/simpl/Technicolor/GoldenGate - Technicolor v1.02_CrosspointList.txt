@@ -1,0 +1,35 @@
+Crosspoint listing for C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NTA\Golden Gate\Simpl\Technicolor\GoldenGate - Technicolor v1.02.SMW
+
+Note:  Crosspoint symbols with EquipID or ControlID set to 0d are not routeable.
+
+Equipment Crosspoint Routing.                                                                       EquipID
+===========================================================================================================
+S-1.1 in macro S-2.1.1 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.2 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.3 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.4 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.5 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.6 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.7 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.8 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.9 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\NT          0
+A\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                  
+S-1.1 in macro S-2.1.10 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\N          0
+TA\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                 
+S-1.1 in macro S-2.1.11 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\N          0
+TA\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                 
+S-1.1 in macro S-2.1.12 (Module File C:\Users\Dean Edelman\Dropbox (TAS)\TAS Team Folder\N          0
+TA\Golden Gate\Simpl\Technicolor\TAS - EQ XPt Transports v2.00.umc)                                 
+
+Control Crosspoint Routing.                                                                         ControlID
+=============================================================================================================
+No symbols of this type found in the program
+

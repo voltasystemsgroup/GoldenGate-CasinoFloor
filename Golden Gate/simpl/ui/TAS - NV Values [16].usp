@@ -1,0 +1,40 @@
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#OUTPUT_SHIFT 2
+#CATEGORY "46" "TAS" // Custom
+
+#DEFINE_CONSTANT items 16
+
+DIGITAL_INPUT	enable, _SKIP_;
+ANALOG_INPUT	in[items];
+ANALOG_OUTPUT	out[items];
+
+NONVOLATILE INTEGER giValue[items];
+
+CHANGE in
+{
+    INTEGER i;
+	
+ 	i = GETLASTMODIFIEDARRAYINDEX();
+ 	
+ 	IF(enable = 1)
+ 	{
+		giValue[i] = in[i];	
+		TRACE("The Value %u was Stored", giValue[i]);
+	}
+} 
+
+Function Main()
+{
+    INTEGER i;
+
+	WAITFORINITIALIZATIONCOMPLETE();
+
+	FOR(i = 1 TO items)
+	{		
+		out[i] = giValue[i];
+	}	  
+}
+
+

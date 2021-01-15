@@ -1,0 +1,27 @@
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+ANALOG_INPUT index, _SKIP_;
+STRING_INPUT in$[50][25];
+
+STRING_OUTPUT out$;
+
+NONVOLATILE STRING gsString[25];
+
+CHANGE index
+{
+ 	IF(index > 0)
+ 	{
+ 		out$ = in$[index];
+ 		gsString = in$[index];
+ 	}
+ 	ELSE
+ 		out$ = "Error";
+}
+
+FUNCTION Main()
+{
+    WAITFORINITIALIZATIONCOMPLETE();
+    out$ = gsString;
+}

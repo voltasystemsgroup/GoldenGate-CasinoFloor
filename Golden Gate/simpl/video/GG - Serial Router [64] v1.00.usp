@@ -1,0 +1,21 @@
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+ANALOG_INPUT index, _SKIP_;
+STRING_INPUT in$[64][50];
+
+STRING_OUTPUT out$;
+
+CHANGE index
+{ 	
+ 	IF(index > 0)
+ 		out$ = in$[index];
+ 	ELSE
+ 		out$ = "";
+}
+
+FUNCTION Main()
+{
+    WAITFORINITIALIZATIONCOMPLETE();
+}

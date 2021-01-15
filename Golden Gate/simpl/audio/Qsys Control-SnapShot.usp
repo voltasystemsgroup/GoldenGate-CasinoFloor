@@ -1,0 +1,88 @@
+/*
+Dealer Name:Crestron
+System Name:
+System Number:
+Programmer:JMG
+Comments:
+*/
+
+//Compiler Directives
+// #ENABLE_DYNAMIC
+// #SYMBOL_NAME ""
+// #HINT ""
+// #DEFINE_CONSTANT
+#CATEGORY "0" 
+// #HELP_PDF_FILE ""
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+//Include Libraries
+
+
+#User_SimplSharp_Library "QsysControlV3"
+
+//IO Variables
+DIgital_Input Initialize;
+Analog_Input Ramp_Time, Value_In[2];
+
+//Parameters
+Integer_Parameter Core_ID;
+String_Parameter Named_Control[100];
+//Global Variables
+Integer giID;
+String gsNC[100];
+Integer giRamp;
+
+QsysNamedControl NC;
+ 
+//Events
+Change Ramp_Time
+{
+ 	giRamp = Ramp_Time / 100;
+	NC.RampTime = giRamp;
+}
+
+Change Value_In
+{
+    integer i;
+	i = getlastmodifiedarrayindex();
+ 	Switch(i)
+		{
+        	case (1):
+			{
+             	NC.sss = Value_In[i];
+			}
+			case (2):
+			{
+             	NC.ssl = Value_In[i];
+			}
+
+		}
+
+}
+	
+Push Initialize
+{
+ 	NC.ID = giID;
+	NC.NameC = gsNC;	//Add Named Control to Core's Named Control Dictionary.		
+}
+
+
+Function Main()
+{
+    // TODO:  Add code here
+    // Initialize declared global and local variables/arrays as needed.
+
+     WaitForInitializationComplete();
+	giID = Core_ID;
+	gsNC = Named_Control;
+	giRamp = Ramp_Time / 100;
+        
+	    // If you are reading any Input or Output variables, uncomment
+    //   the WaitForInitializationComplete statement above and read
+    //   them afterwards.  Input/Output variables will not have
+    //   their correct values set until after the logic processor
+    //   runs and propagates the values to them.
+}
+

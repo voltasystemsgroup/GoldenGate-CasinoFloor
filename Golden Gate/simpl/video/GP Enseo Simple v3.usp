@@ -1,0 +1,598 @@
+/* RBP
+v3: Added the Aux Send serial input for Power Off
+		using the setPowerState and value of Standby was causing boxes to reboot/initialize
+		approxiamately 20% of the time the command was issued
+		Added logic to show Power FB off and Channel FB 0 when unable to connect to the STB 
+
+v2: Changed debug print structure/data
+	Added fake BLIND feedback to command routines and created a slow polling routine in simpl
+	Added Debug_Communication_To_Simpl
+	
+v1: Changed debug print structure
+	Added a force disconnect
+	Changed the fSend function to take the integer index of the command to send as a parameter instead of the actual command string variable	
+    Added fake feedback to parsing routine
+
+v0: Power and Channel, Version, only queueing of the first command that initiates a connect
+
+*/
+// ___________________________________________________________________________________________________________ Module Compile Time Behavior
+//#DEFINE_CONSTANT cDebug              1
+#OUTPUT_SHIFT                        2
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+//#ENABLE_TRACE
+
+//_____________________________________________________________________________________________________________ Help F1
+#HELP_BEGIN
+GreenPoint TDI   www.greenpointtdi.com
+
+#HELP_END
+
+
+//_____________________________________________________________________________________________________________ Constants
+#DEFINE_CONSTANT cSocketTimeOutTime  600
+#DEFINE_CONSTANT cRetime             1
+#DEFINE_CONSTANT cCancel             0
+
+#DEFINE_CONSTANT cRxBuf              2048
+
+#DEFINE_CONSTANT cCMD_Header         "POST /RPC2 HTTP/1.1\nUser-Agent: Enseo XML-RPC/1.0\nContent-Type: text/xml\nContent-Length: "
+#DEFINE_CONSTANT cParamString_BOF    "<params><param><value><string>"
+#DEFINE_CONSTANT cParamString_EOF    "</string></value></param></params>"
+#DEFINE_CONSTANT cParamInt_BOF       "<params><param><value><i4>"
+#DEFINE_CONSTANT cParamInt_EOF       "</i4></value></param></params>"
+
+#DEFINE_CONSTANT cFull_GetChan       "POST /RPC2 HTTP/1.1\nUser-Agent: Enseo XML-RPC/1.0\nContent-Type: text/xml\nContent-Length: 94\n\n<?xml version=\x221.0\x22?><methodCall><methodName>Enseo.GetCurrentChannel</methodName></methodCall>"
+#DEFINE_CONSTANT cFull_GetPower      "POST /RPC2 HTTP/1.1\nUser-Agent: Enseo XML-RPC/1.0\nContent-Type: text/xml\nContent-Length: 90\n\n<?xml version=\x221.0\x22?><methodCall><methodName>Enseo.GetPowerState</methodName></methodCall>"
+
+#DEFINE_CONSTANT cMethod_AuxSend     "Enseo.SendAuxCommand"
+#DEFINE_CONSTANT cMethod_SetPower    "Enseo.SetPowerState"
+#DEFINE_CONSTANT cMethod_GetPower    "Enseo.GetPowerState"
+#DEFINE_CONSTANT cMethod_SetChan     "Enseo.SetCurrentChannel"
+#DEFINE_CONSTANT cMethod_GetChan     "Enseo.GetCurrentChannel"
+#DEFINE_CONSTANT cMethod_SetVol      "Enseo.SetVolume"
+#DEFINE_CONSTANT cMethod_GetVol      "Enseo.GetVolume"
+#DEFINE_CONSTANT cMethod_SetMute     "Enseo.SetMute"
+#DEFINE_CONSTANT cMethod_GetMute     "Enseo.GetMute" 
+#DEFINE_CONSTANT cMethod_GetVersion  "Enseo.GetVersion"
+
+#DEFINE_CONSTANT cIndex_Send            0
+#DEFINE_CONSTANT cIndex_Q               1
+#DEFINE_CONSTANT cIndex_RPC             2
+#DEFINE_CONSTANT cIndex_GetPower           3
+#DEFINE_CONSTANT cIndex_GetChan            4
+#DEFINE_CONSTANT cIndex_GetMute            5
+#DEFINE_CONSTANT cIndex_GetVol             6
+#DEFINE_CONSTANT cIndex_SetPower           7
+#DEFINE_CONSTANT cIndex_SetChan            8
+#DEFINE_CONSTANT cIndex_SetMute            9
+#DEFINE_CONSTANT cIndex_SetVol             10
+#DEFINE_CONSTANT cIndex_AuxSend            11
+#DEFINE_CONSTANT cIndex_Command_Count   11
+
+#DEFINE_CONSTANT cTag_Integer        "i4"
+#DEFINE_CONSTANT cTag_String         "string"
+#DEFINE_CONSTANT cTag_Boolean        "boolean"
+
+#DEFINE_CONSTANT cTrue               1
+#DEFINE_CONSTANT cFalse              0
+
+//_____________________________________________________________________________________________________________ Simpl Input - Output
+Digital_Input  _SKIP_, _SKIP_                   ;
+Digital_Input  Debug_Communication_To_Simpl     ;
+Digital_Input  Debug_Communication_To_File      ;
+Digital_Input  Force_Disco                      ;
+Digital_Input  Channel_Get                      ;
+Digital_Input  Power_Get                        ;
+String_Input   IP[15]                           ;
+String_Input   RPC_No_Parameters[64]            ;
+Analog_Input   Power_Aux_Send_RPC               ;
+String_Input   Channel_RPC$[12]                 ;
+Analog_Input   Channel_RPC                      ;
+Analog_Input   Volume_RPC                       ;
+String_Input   Serial_Command_Aux_Send_RPC[64]  ;
+
+Analog_Output  Socket_Status_FB                 ;
+String_Output  Message_FB                       ;
+String_Output  IP_FB                            ;
+String_Output  Version_FB                       ;
+Analog_Output  Channel_FB                       ;
+Analog_Output  Power_FB                         ;
+Analog_Output  Volume_FB                        ;
+Analog_Output  Mute_FB                          ;
+
+//Sockets________________________________________________________________________________________________________
+TCP_CLIENT Client[cRxBuf]                     ;
+
+//Parameters_____________________________________________________________________________________________________
+STRING_PARAMETER  Default_IP[15]              ;
+#BEGIN_PARAMETER_PROPERTIES Default_IP
+	propValidUnits   = unitString             ;
+    propDefaultUnit  = unitString             ;
+	propDefaultValue = "10.0.0.10"            ;
+#END_PARAMETER_PROPERTIES
+
+// ____________________________________________________________________________________________________________ Global Varibles
+Integer g_iPort                           ;
+String  g_sIP[15]                         ;
+Integer g_bOkToConnect                    ;
+
+String  g_sCMD[cIndex_Command_Count][512] ;
+String  g_sHeader[255]                    ;
+
+String g_sReply[cRxBuf]                   ;
+String g_sMethod[64]                      ;
+String g_sParam[cRxBuf]                   ;
+String g_sValue[64]                       ;
+
+String g_sVersion[32]                     ;
+Integer g_iPower                          ;
+
+#If_Defined cDebug
+Signed_Integer g_siHandle                 ;
+String  g_sDebugRx[2048]                  ;
+String  g_sDebugTx[2048]                  ;
+Integer g_bDebug_File_Open                ;
+String g_sSocketStatusMessage[12][96]     ;
+#EndIf
+Integer g_i2Series                        ;
+
+//______________________________________________________________________________________________________________ Functions
+String_Function fXML_PCDATA(String Data, String Tag)
+{
+	String  sStart[24], sEnd[25]                                ;
+	String  sReturn[255]                                        ;
+	Integer iStart,     iEnd                                    ;
+	 	
+	If(Find(Tag, Data))		
+	{		
+		sStart = "<"  + Tag                                     ;
+		sEnd   = "</" + Tag + ">"                               ; 
+		iStart = Find(sStart, Data)                             ;
+		If(iStart)
+		{
+			iStart = Find(">", Data, iStart) + 1                ;
+			If(iStart)
+			{
+				iEnd   = Find(sEnd, Data)                       ;
+				If(iEnd)
+				{		
+					sReturn = Mid(Data, iStart, iEnd - iStart)  ;
+	            	Return(sReturn)                             ;
+	            }
+			}
+		}		           
+	}
+	Return("")                                                  ;
+}
+
+Function fSocketTimeOut(Integer iAction)
+{		
+	Wait(cSocketTimeOutTime, wName)
+	{		
+		SocketDisconnectClient(Client)             ;
+		g_sCMD[cIndex_Q] = ""                      ;
+	}
+
+	If(iAction = cRetime) ReTimeWait(cSocketTimeOutTime, wName)         ;
+	Else        CancelWait(wName)         ;
+}
+
+Signed_Integer_Function fSend(Integer iIndex)
+{
+	Signed_Integer siSend ;
+	  
+	siSend = -100 ;		
+	
+	If(Socket_Status_FB = 2)
+	{				
+		fSocketTimeOut(cRetime) ;		
+		siSend = SocketSend(Client, g_sCMD[iIndex]) ; 
+		
+		If(siSend >= 0)
+		{
+		    g_sCMD[cIndex_Send] = g_sCMD[iIndex] ;
+		    
+		    #If_Defined cDebug
+			If(Debug_Communication_To_File)
+			{	
+				If(g_bDebug_File_Open = cTrue)
+				{										
+					g_sDebugTx = Time() + ":" + ItoA(GetTicks()) ;
+				    
+				    If(g_i2Series)
+				    {
+				    	MakeString(g_sDebugTx, "%s  Number of Bytes Sent=%d", g_sDebugTx, siSend) ;
+				    }
+				    
+				    MakeString(g_sDebugTx, "\n|------------ Crestron Tx %s\n%s\n------------|\n", g_sDebugTx, g_sCMD[iIndex])         ;
+				    
+				    FileWrite(g_siHandle, g_sDebugTx, Len(g_sDebugTx))                           ;
+				    
+				    Message_FB = "Tx Printed";					
+				}
+				Else
+				{
+				
+				}
+			}
+			If(Debug_Communication_To_Simpl)
+			{
+				Message_FB = "Tx-->|" + Mid(g_sCMD[cIndex_Send], Find("\n\n", g_sCMD[cIndex_Send]) + 4, Len(g_sCMD[cIndex_Send]) - (Find("\n\n", g_sCMD[cIndex_Send]) + 4)) ;				
+			}
+			#EndIf
+		}		
+		Else
+		{
+			#If_Defined cDebug
+			If(siSend = -5)
+			{
+				MakeString(Message_FB, "Send Function Failed, Error=%d : No connection has been established", siSend) ;
+			}
+			Else If(siSend = -1)
+			{
+				MakeString(Message_FB, "Send Function Failed, Error=%d : ClientVariable is not a TCP/IP client variable ", siSend) ;
+			}
+			Else
+			{
+				MakeString(Message_FB, "Send Function Failed, Error=%d : ?", siSend) ;
+			}
+			#EndIf
+		}	
+	}
+	Else
+	{
+		siSend = -128 ; // This will let the below If statement run
+	}
+	
+	If(siSend < 0)
+	{
+		g_sCMD[cIndex_Q] = g_sCMD[iIndex] ;
+		
+		If(g_bOkToConnect)
+		{
+			If(Len(g_sIP))
+			{
+				SocketConnectClient(Client, g_sIP, g_iPort, 0) ;				
+				#If_Defined cDebug
+				MakeString(Message_FB, "Send Function but not connected, Socket_Status_FB=%d, Calling Connection", Socket_Status_FB) ;
+				#EndIf
+			}
+			Else
+			{
+				MakeString(Message_FB, "Send Function but not connected, IP address not configured") ;
+			}
+		}
+		Else
+		{
+			#If_Defined cDebug
+			MakeString(Message_FB, "Send Function but not connected, Socket_Status_FB=%d", Socket_Status_FB) ;
+			#EndIf
+		}				
+	}
+	#If_Defined cDebug
+	MakeString(Message_FB, "Send Function Finished") ;
+	#EndIf
+	Return(siSend) ;			
+}
+
+Function fChannel(Integer iChannel)
+{
+	String sParam[192] ;
+	String sBody[192]  ;
+	
+	If(iChannel)
+	{									
+		MakeString(sParam, "%s%03u%s", cParamInt_BOF, iChannel ,cParamInt_EOF ) ;
+		Makestring(sBody,"<?xml version=\x221.0\x22?><methodCall><methodName>%s</methodName>%s</methodCall>", cMethod_SetChan, sParam )     ;
+							
+		g_sCMD[cIndex_SetChan] = cCMD_Header + ItoA(Len(sBody)) + "\n\n" + sBody  ;
+		
+		Channel_FB = iChannel ;
+		
+		fSend(cIndex_SetChan) ;
+	}	
+}
+
+//Events_________________________________________________________________________________________________________
+Push Force_Disco
+{
+	SocketDisconnectClient(Client)             ;
+	g_sCMD[cIndex_Q] = ""                      ;
+}
+
+Push Channel_Get {	fSend(cIndex_GetChan)  ; }
+Push Power_Get {	fSend(cIndex_GetPower) ; }
+
+Change Serial_Command_Aux_Send_RPC
+{
+	String sParam[128]  ;
+	String sBody[192]   ;
+	
+	If(Len(Serial_Command_Aux_Send_RPC))
+	{
+		MakeString(sParam, "%s%s%s", cParamString_BOF, Serial_Command_Aux_Send_RPC, cParamString_EOF)     ;
+		Makestring(sBody,"<?xml version=\x221.0\x22?><methodCall><methodName>%s</methodName>%s</methodCall>", cMethod_AuxSend, sParam )     ;
+		g_sCMD[cIndex_SetPower] = cCMD_Header + ItoA(Len(sBody)) + "\n\n" + sBody  ;
+				
+		fSend(cIndex_AuxSend) ;
+	}
+}
+
+Change RPC_No_Parameters
+{
+	String sBody[192]  ;
+	
+	If(Len(RPC_No_Parameters))
+	{
+		Makestring(sBody,"<?xml version=\x221.0\x22?><methodCall><methodName>%s</methodName></methodCall>", RPC_No_Parameters)     ;		
+		g_sCMD[cIndex_RPC] = cCMD_Header + ItoA(Len(sBody)) + "\n\n" + sBody  ;
+		
+		fSend(cIndex_RPC) ;
+	}
+}
+
+Change Channel_RPC$
+{
+	Integer iChannel ;	
+	
+	If(Len(Channel_RPC$))
+	{		
+		iChannel = AtoI(Channel_RPC$) ;
+		
+		If(iChannel)
+		{		
+			fChannel(iChannel);
+		}
+	}
+}
+
+Change Channel_RPC
+{
+	If(Channel_RPC)
+	{
+		fChannel(Channel_RPC);
+	}	
+}
+
+Change Volume_RPC
+{	
+	String sParam[128] ;
+	String sBody[192]  ;
+	
+    If(Volume_RPC <= 100)
+	{
+    	MakeString(sParam, "%s%03u%s", cParamString_BOF, Volume_RPC, cParamString_EOF ) ;
+		Makestring(sBody,"<?xml version=\x221.0\x22?><methodCall><methodName>%s</methodName>%s</methodCall>", cMethod_SetVol, sParam )     ;
+		
+		g_sCMD[cIndex_SetVol] = cCMD_Header + ItoA(Len(sBody)) + "\n\n" + sBody  ;
+		
+		Volume_FB = Volume_RPC ;
+		
+		fSend(cIndex_SetVol)                                          ;
+	}
+}
+
+Change Power_Aux_Send_RPC
+{
+	String sParam[192]  ;
+	String sBody[192]   ;
+	
+	If(Power_Aux_Send_RPC)
+	{
+		g_iPower = Power_Aux_Send_RPC - 1 ;
+						
+		If(g_iPower)    MakeString(sParam, "%sPON%s", cParamString_BOF, cParamString_EOF ) ;
+		Else			MakeString(sParam, "%sPOFF%s", cParamString_BOF, cParamString_EOF ) ;												
+		
+		Makestring(sBody,"<?xml version=\x221.0\x22?><methodCall><methodName>%s</methodName>%s</methodCall>", cMethod_AuxSend, sParam )     ;
+							
+		g_sCMD[cIndex_SetPower] = cCMD_Header + ItoA(Len(sBody)) + "\n\n" + sBody  ;
+						
+		Power_FB = g_iPower ;
+		
+		fSend(cIndex_SetPower) ;
+	}
+}
+
+Push Debug_Communication_To_File
+{
+    String title[64] ;
+#If_Defined cDebug                      
+	MakeString(title,"\\NVRAM\\EnseoDebug%s.txt",GetSymbolInstanceName()) ;                       
+	While(Find(":", title))
+	{
+		SetString("-", Find(":", title), title)    ;
+	}
+	StartFileOperations()                                                           ;
+	g_siHandle = FileOpen(title,_O_WRonly | _O_Creat | _O_Append | _O_Text)         ;
+
+	If(g_siHandle >= 0)		g_bDebug_File_Open = cTrue  ;
+	Else                    g_bDebug_File_Open = cFalse ;
+#EndIf
+}
+
+Release Debug_Communication_To_File
+{
+#If_Defined cDebug
+	FileClose(g_siHandle)                   ;
+	EndFileOperations()                     ;
+	g_bDebug_File_Open = cFalse             ;
+#EndIf
+}
+
+Change IP
+{
+	If(Len(IP))
+	{
+		g_sIP   = IP  ;		
+		IP_FB = g_sIP ;					
+	}
+}
+
+
+// _____________________________________________________________________________________________________________ Socket Events
+SocketConnect    Client
+{ 
+	If(Len(g_sCMD[cIndex_Q]))   
+	{
+		fSend(cIndex_Q) ;	
+	}
+}
+
+//SocketDisconnect Client {   }
+
+SocketReceive    Client
+{
+	fSocketTimeOut(cRetime) ;	
+	
+	While(Find("</methodResponse>", Client.SocketRxBuf))
+	{		
+		#If_Defined cDebug
+		If(Debug_Communication_To_File)
+		{	
+			If(g_bDebug_File_Open = cTrue)
+			{			
+				g_sDebugRx = "|------------ Crestron Rx " + Time() + ":" + ItoA(GetTicks()) + "\n" + Client.SocketRxBuf + "\n------------|\n\n\n" ;
+				FileWrite(g_siHandle, g_sDebugRx, Len(g_sDebugRx))                                   ;
+				Message_FB = "Rx Printed" ;				
+			}
+		}
+		If(Debug_Communication_To_Simpl)
+		{			
+			g_sDebugRx = Client.SocketRxBuf ;
+			Message_FB = "Rx<--|" + Mid(g_sDebugRx, Find("\n\n", g_sDebugRx) + 4, Len(g_sDebugRx) - (Find("\n\n", g_sDebugRx) + 4)) ;
+		}
+		#EndIf
+		
+		
+		g_sReply = Remove("</methodResponse>", Client.SocketRxBuf);
+		
+		g_sMethod = fXML_PCDATA(g_sCMD[cIndex_Send], "methodName") ;
+				
+		If(g_sMethod = cMethod_GetChan)
+		{			
+			g_sValue = fXML_PCDATA(g_sReply, cTag_Integer)     ;			
+			Channel_FB = AtoI(g_sValue)                        ;
+		}
+		Else If(g_sMethod = cMethod_GetPower)
+		{			
+			g_sValue = fXML_PCDATA(g_sReply, cTag_String)      ;			
+			If     (g_sValue = "On"     )
+				Power_FB = 1                                   ;
+			Else If(g_sValue = "Standby")
+				Power_FB = 0                                   ;
+		}
+		Else If(g_sMethod = cMethod_GetVol)
+		{
+			g_sValue = fXML_PCDATA(g_sReply, "i4")          ;			
+			Volume_FB = AtoI(g_sValue)                      ;
+		}
+		Else If(g_sMethod = cMethod_GetMute)
+		{
+			g_sValue = fXML_PCDATA(g_sReply, "boolean")     ;			
+			Mute_FB = AtoI(g_sValue) ;
+		}		
+		Else If(g_sMethod = cMethod_GetVersion)
+		{
+			g_sVersion = "" ;
+			While(Find("</member>", g_sReply))
+			{
+				g_sParam = Remove("</member>", g_sReply) ;
+				g_sValue = fXML_PCDATA(g_sParam, cTag_Integer)  ;
+				MakeString(g_sVersion, "%s%s.",g_sVersion, g_sValue)         ;
+			}
+			g_sVersion = Left(g_sVersion, Len(g_sVersion) - 1)  ;
+			Version_FB = g_sVersion ;
+		}		
+		Else
+		{
+			#If_Defined cDebug
+			MakeString(Message_FB,"Reply not parsed, last method sent=%s", g_sMethod) ;
+			#EndIf
+		}
+	}	
+}
+
+SocketStatus Client
+{
+	Socket_Status_FB = SocketGetStatus() ;
+	cSwitch(Socket_Status_FB)
+	{
+		Case(   0):{                                 g_bOkToConnect = cTrue  ; Break ; } // 0-Not Connected
+		Case(   1):{                                 g_bOkToConnect = cFalse ; Break ; } // 1-Waiting for Connection
+		Case(   2):{                                 g_bOkToConnect = cFalse ; Break ; } // 2-Connected
+		Case(   3):{ SocketDisconnectClient(Client); g_bOkToConnect = cTrue  ; Break ; } // 3-Connection Failed
+		Case(   4):{                                 g_bOkToConnect = cTrue  ; Break ; } // 4-Connection Broken Remotely
+		Case(   5):{                                 g_bOkToConnect = cTrue  ; Break ; } // 5-Connection Broken Locally
+		Case(   6):{                                 g_bOkToConnect = cFalse ; Break ; } // 6-Performing DNS Lookup
+		Case(   7):{ SocketDisconnectClient(Client); g_bOkToConnect = cTrue  ; Break ; } // 7-DNS Lookup Failed
+		Case(   8):
+		{
+			g_bOkToConnect = cFalse ; 
+			SocketGetRemoteIPAddress (Client, g_sIP) ;
+			IP_FB = g_sIP                            ;
+			Break ;
+		} // 8-DNS Name Resolved 
+		Case(   9):{ SocketDisconnectClient(Client); g_bOkToConnect = cTrue  ; Break ; } // 9-Loss of Link
+		Case(-257):{ SocketDisconnectClient(Client); g_bOkToConnect = cTrue  ; Break ; } // -257-IDK
+	}
+	
+	#If_Defined cDebug
+	If(Debug_Communication_To_File)
+	{	
+		If(g_bDebug_File_Open = cTrue)
+		{			
+			If(Socket_Status_FB < 10 )                                    
+			{   
+				MakeString(g_sSocketStatusMessage[0],"|------------ SOCKET STATUS %s:%u = %s\n",Time(), GetTicks(), g_sSocketStatusMessage[Socket_Status_FB + 1]) ;
+			}
+			Else
+			{
+				MakeString(g_sSocketStatusMessage[0],"|------------ SOCKET STATUS %s:%u = %d%s\n",Time(), GetTicks(), SocketGetStatus(), g_sSocketStatusMessage[11]) ;
+			}
+			FileWrite(g_siHandle, g_sSocketStatusMessage[0], Len(g_sSocketStatusMessage[0]))                                   ;
+		}
+	}
+	#EndIf
+}
+
+//Start Up____________________________________ __________________________________________________________________
+Function Main()
+{
+    g_iPort = 27275                                                                                             ;
+    g_sIP   = Default_IP                                                                                        ;
+    IP_FB = g_sIP ;
+    
+    g_sCMD[cIndex_GetPower] = cFull_GetPower ;
+    g_sCMD[cIndex_GetChan] = cFull_GetChan ;
+    
+    g_bOkToConnect = cTrue  ;
+       
+    #If_Defined cDebug
+    g_bDebug_File_Open = cFalse ;
+    
+    g_sSocketStatusMessage[1]  = "0:Not Connected" ;
+	g_sSocketStatusMessage[2]  = "1:Waiting for Connection" ;
+	g_sSocketStatusMessage[3]  = "2:Connected\n" ;
+	g_sSocketStatusMessage[4]  = "3:Connection Failed" ;
+	g_sSocketStatusMessage[5]  = "4:Connection Broken by Enseo" ;
+	g_sSocketStatusMessage[6]  = "5:Connection Broken by Crestron" ;
+	g_sSocketStatusMessage[7]  = "6:Performing DNS Lookup" ;
+	g_sSocketStatusMessage[8]  = "7:DNS Lookup Failed" ;
+	g_sSocketStatusMessage[9]  = "8:DNS Name Resolved" ;
+	g_sSocketStatusMessage[10] = "9:Loss of Link" ;
+	g_sSocketStatusMessage[11] = "-257:Undefined" ;
+
+	Message_FB = "Internal Debug Constant is ON, use of digital signals for debugging will operate" ;
+	#EndIf
+	
+	#If_Not_Defined cDebug
+	Message_FB = "Internal Debug Constant is OFF, use of digital signals for debugging will NOT operate" ;
+	#EndIf
+	
+	#If_Series3 g_i2Series = 0 ; #EndIf
+	#If_Series2 g_i2Series = 1 ; #EndIf // Debug statement as well.
+}
+    

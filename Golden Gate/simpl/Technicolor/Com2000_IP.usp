@@ -1,0 +1,151 @@
+/*******************************************************************************************
+  SIMPL+ Module Information
+*******************************************************************************************/
+
+/*******************************************************************************************
+  Compiler Directives
+*******************************************************************************************/
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+#DEFINE_CONSTANT TCPPORT 80  
+#DEFINE_CONSTANT cnMax_Tuners 48
+
+//#OUTPUT_SHIFT 58
+      
+
+/*******************************************************************************************
+  DIGITAL, ANALOG and SERIAL INPUTS and OUTPUTS
+*******************************************************************************************/
+DIGITAL_INPUT Com2000_Poll;
+STRING_PARAMETER _SKIP_,Chassis_IP_Address[16];
+STRING_PARAMETER Card_IP_Address[6][16];
+STRING_PARAMETER Tuner_IP_Address[48][16];
+
+                              
+/*******************************************************************************************
+  Global Variables
+*******************************************************************************************/
+TCP_CLIENT ClientTCP[8192];
+STRING tcpCommand[512];
+STRING strChannelName[8];
+STRING strChannelNumber[4];
+INTEGER nCurrent_Tuner;
+                                        
+STRING_INPUT _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+			 _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+			 _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+			 _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,DirecTV_Direct_Tune[48,48][16];
+
+STRING_OUTPUT _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+			 _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+			 _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+			 _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,DirecTV_Channel_Info[48,48];
+
+   
+/*******************************************************************************************
+  Functions
+*******************************************************************************************/
+/*******************************************************************************************
+  Event Handlers
+*******************************************************************************************/
+SOCKETCONNECT ClientTCP 
+{
+	TRACE("Com2000 Tx: %s\r",tcpCommand);
+   	SOCKETSEND(ClientTCP,tcpCommand);
+}
+
+SOCKETRECEIVE ClientTCP 
+{
+	STRING strSegment[8192];
+	STRING strTrash[8192];
+	STRING strSearch_Segment[128];
+	STRING strTemp_Channel[128];
+    
+	TRACE("Com2000 Rx: %s\r",ClientTCP.SOCKETRXBUF);			
+
+	IF(FIND("</body></html>",ClientTCP.SOCKETRXBUF))
+	{										
+		strSegment = GATHER("</body></html>",ClientTCP.SOCKETRXBUF,500);
+
+		IF(FIND("<td>SNR</td><td>Strength</td></tr>",strSegment))  // CHANNEL INFO PARSE
+		{
+			strTrash = REMOVE("<td>SNR</td><td>Strength</td></tr>",strSegment);
+			FOR(nCurrent_Tuner = 1 TO cnMax_Tuners)
+			{
+				MAKESTRING(strSearch_Segment,"<td>%s</td>",Tuner_IP_Address[nCurrent_Tuner]);
+
+				IF(FIND(strSearch_Segment,strSegment))
+				{                  					
+                    strTrash = REMOVE("tune=",strSegment);
+					strTrash = REMOVE("\x27>",strSegment);
+                	strTemp_Channel = REMOVE("</a>",strSegment);
+					strTemp_Channel = LEFT(strTemp_Channel,LEN(strTemp_Channel)-4);
+
+					IF(LEN(strTemp_Channel) >= 6)
+                        DirecTV_Channel_Info[nCurrent_Tuner] = strTemp_Channel;
+					ELSE
+						DirecTV_Channel_Info[nCurrent_Tuner] = "Error";
+				}	
+			}
+		}
+
+		CLEARBUFFER(ClientTCP.SOCKETRXBUF);
+		SOCKETDISCONNECTCLIENT(ClientTCP);
+	}
+}
+
+ 
+CHANGE DirecTV_Direct_Tune
+{
+	INTEGER nCurrent_Stream;
+	INTEGER nCurrent_Card;
+	INTEGER nCurrent_Tuner;
+	INTEGER nMajor;
+	INTEGER nMinor;
+	STRING strStation[16];
+	
+	nCurrent_Stream = GetLastModifiedArrayIndex();
+    
+	IF(nCurrent_Stream % 8)
+		nCurrent_Card = ((nCurrent_Stream / 8) + 1);
+	ELSE
+		nCurrent_Card = (nCurrent_Stream / 8);
+
+	IF(nCurrent_Stream % 8)
+		nCurrent_Tuner = nCurrent_Stream % 8;
+	ELSE
+		nCurrent_Tuner = 8;	
+                        
+	IF(LEN(DirecTV_Direct_Tune[nCurrent_Stream]))
+	{		
+		strStation = DirecTV_Direct_Tune[nCurrent_Stream];
+		
+		IF(FIND("-",strStation))
+		{
+			nMajor = ATOI(REMOVE("-",strStation));
+			nMinor = ATOI(strStation);	
+		}
+		ELSE	
+		{
+			nMajor = ATOI(strStation);
+			nMinor = 0;	
+		}
+																																								
+		MAKESTRING(tcpCommand, "GET /cgi-bin/webcmd?screen=TuneCard&cardIp=%s&tuner=%s&ip=%s&port=%s&protocol=0&channelObjectId=0&majorNum=%s&minorNum=%s&streamId=111&securityMode=0&persistent=1 HTTP/1.1\x0D\x0A\x0D\x0A", Card_IP_Address[nCurrent_Card],ITOA(nCurrent_Tuner),Tuner_IP_Address[nCurrent_Stream],ITOA(nCurrent_Stream+1001),ITOA(nMajor),ITOA(nMinor));			
+		SOCKETCONNECTCLIENT(ClientTCP,Chassis_IP_Address,TCPPORT,0);
+	}
+}
+
+
+PUSH Com2000_Poll
+{
+	MAKESTRING(tcpCommand, "GET /cgi-bin/webcmd?screen=discover HTTP/1.1\x0D\x0A\x0D\x0A");
+	SOCKETCONNECTCLIENT(ClientTCP,Chassis_IP_Address,TCPPORT,0);
+}
+
+/*******************************************************************************************
+  Main()
+*******************************************************************************************/
+

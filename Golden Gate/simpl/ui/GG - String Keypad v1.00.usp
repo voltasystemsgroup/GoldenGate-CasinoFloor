@@ -1,0 +1,93 @@
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+DIGITAL_INPUT digit_0, digit_1, digit_2, digit_3, digit_4, digit_5, digit_6, digit_7, digit_8, digit_9, dash, enter, clear;
+STRING_OUTPUT channel$;
+
+STRING gString[10];
+
+PUSH digit_0
+{
+ 	gString = gString + "0";
+ 	channel$ = gString;
+}
+
+PUSH digit_1
+{
+ 	gString = gString + "1";
+ 	channel$ = gString;
+}
+
+PUSH digit_2
+{
+ 	gString = gString + "2";
+ 	channel$ = gString;
+}
+
+PUSH digit_3
+{
+ 	gString = gString + "3";
+ 	channel$ = gString;
+}
+
+PUSH digit_4
+{
+ 	gString = gString + "4";
+ 	channel$ = gString;
+}
+
+PUSH digit_5
+{
+ 	gString = gString + "5";
+ 	channel$ = gString;
+}
+
+PUSH digit_6
+{
+ 	gString = gString + "6";
+    channel$ = gString;
+}
+
+PUSH digit_7
+{
+ 	gString = gString + "7";
+ 	channel$ = gString;
+}
+
+PUSH digit_8
+{
+ 	gString = gString + "8";
+ 	channel$ = gString;
+}
+
+PUSH digit_9
+{
+ 	gString = gString + "9";
+ 	channel$ = gString;
+}
+
+PUSH dash
+{
+ 	gString = gString + "-";
+ 	channel$ = gString;
+}
+
+PUSH enter
+{
+ 	DELAY(100);
+ 	gString = "";
+ 	channel$ = gString;
+}
+
+PUSH clear
+{
+ 	gString = "";
+ 	channel$ = gString;
+}
+
+FUNCTION Main()
+{
+    WAITFORINITIALIZATIONCOMPLETE();
+    gString = "";
+}

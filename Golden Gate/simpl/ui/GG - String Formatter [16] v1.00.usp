@@ -1,0 +1,42 @@
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#OUTPUT_SHIFT 2
+
+#DEFINE_CONSTANT maxInputs 16
+
+ANALOG_INPUT fontSize, _SKIP_;
+STRING_INPUT in$[maxInputs][50];
+DIGITAL_OUTPUT enable[maxInputs], _SKIP_;
+STRING_OUTPUT out$[maxInputs];
+
+FUNCTION format(INTEGER i)
+{
+ 	IF(LEN(in$[i]) > 0)
+ 		enable[i] = 1;
+ 	ELSE
+ 		enable[i] = 0;
+ 		
+ 	MAKESTRING(out$[i],"<FONT size=\x22%s\x22 face=\x22Arial\x22 color=\x22#ffffff\x22>%s</FONT>", ITOA(fontSize), in$[i]);
+}
+
+CHANGE in$
+{
+ 	INTEGER i;
+ 	
+ 	i = GETLASTMODIFIEDARRAYINDEX();
+ 	
+ 	format(i);
+}
+
+FUNCTION Main()
+{
+	INTEGER i;
+
+    WAITFORINITIALIZATIONCOMPLETE();
+    
+    FOR(i = 1 to maxInputs)
+    {
+    	format(i);
+    }
+}

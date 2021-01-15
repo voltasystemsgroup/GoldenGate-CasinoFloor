@@ -1,0 +1,31 @@
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+DIGITAL_INPUT in[100], _SKIP_;
+ANALOG_INPUT index;
+ANALOG_OUTPUT out[100];
+
+NONVOLATILE INTEGER giStored[100];
+
+CHANGE in
+{
+ 	INTEGER i;
+ 	
+ 	i = GETLASTMODIFIEDARRAYINDEX();
+ 	
+ 	out[i] = index;
+ 	giStored[1] = index;
+}
+
+FUNCTION Main()
+{
+	INTEGER i;
+
+    WAITFORINITIALIZATIONCOMPLETE();
+    
+    FOR(i = 1 TO 100)
+    {
+    	out[i] = giStored[1];
+    }
+}
